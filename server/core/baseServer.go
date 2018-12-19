@@ -3,9 +3,7 @@ package core
 import (
 	"context"
 	"errors"
-	"io/ioutil"
 	"net/http"
-	"path/filepath"
 	prot "server/core/protocols"
 	"strconv"
 	"strings"
@@ -106,27 +104,6 @@ func (b *BaseServer) AddRequestListener(
 	})
 }
 
-/* Simple method that handles the new client arrival / old client arrival on the
-root page */
-func (b *BaseServer) handleRoot(w http.ResponseWriter, r *http.Request) {
-	Request.Printf("%s %s\n", r.Method, r.URL.String())
-
-	path, err := filepath.Abs("static/game.html")
-	if err != nil {
-		Error.Println(err)
-		http.Error(w, err.Error(), http.StatusNotFound)
-	}
-
-	content, err := ioutil.ReadFile(path)
-	if err != nil {
-		Error.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-
-	w.Header().Add("Content-Type", "text/html")
-	w.Write(content)
-}
-
 func (b *BaseServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 	Request.Printf("%s %s\n", r.Method, r.URL.String())
 	clientId := b.getClientId(w, r)
@@ -143,6 +120,8 @@ func (b *BaseServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 if None, gets a new one */
 func (b *BaseServer) getClientId(w http.ResponseWriter, r *http.Request) int {
 	err := r.ParseForm()
+
+	Info.Printf("Trying to get client id from %v\n", r.Form)
 
 	if err != nil {
 		Error.Println(err)
@@ -162,12 +141,14 @@ func (b *BaseServer) getClientId(w http.ResponseWriter, r *http.Request) int {
 		return -1
 	}
 
+	Info.Printf("The client already had the ID %d\n", i)
 	return i
 }
 
 func (b *BaseServer) newClient(w http.ResponseWriter) int {
 	b.currentId += 1
 
+	Info.Printf("New client; their ID is %d", b.currentId)
 	w.Write(prot.GetClientIdMessage(b.currentId))
 
 	return b.currentId
