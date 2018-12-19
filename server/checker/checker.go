@@ -5,20 +5,28 @@ import (
 )
 
 var (
-	blackPlayer *core.GameClient
-	whitePlayer *core.GameClient
+	blackPlayer core.GameClient
+	whitePlayer core.GameClient
+	coreServer  core.Server
 )
 
 type CheckerServer struct{}
 
-func (CheckerServer) Init(server core.Server) error {
+func (CheckerServer) Init(server core.Server) {
+	coreServer = server
 	core.Info.Println("The checker server was initialized.")
 
-	return nil
+	err := server.ServeAndListen()
+
+	if err != nil {
+		core.Error.Println(err)
+	}
 }
 
-func (CheckerServer) Shutdown() error {
-	core.Info.Println("The checker server was shutdown")
+func (CheckerServer) Shutdown() {
+	core.Info.Println("Shutting down the checker server...")
 
-	return nil
+	// For now we shutdown the core server as well, eventually we might want
+	// to change the game type without restarting the server..
+	coreServer.Shutdown()
 }
