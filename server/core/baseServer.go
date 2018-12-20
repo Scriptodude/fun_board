@@ -105,6 +105,14 @@ func (b *BaseServer) AddRequestListener(
 }
 
 func (b *BaseServer) handleConnection(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+
+		w.Header().Add("Content-Type", "")
+		// Since we don't want to support anything other than POST
+		http.Redirect(w, r, "/", 405)
+		return
+	}
+
 	Request.Printf("%s %s\n", r.Method, r.URL.String())
 	clientId := b.getClientId(w, r)
 
