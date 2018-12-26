@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	prot "server/core/protocols"
+	i "server/interfaces"
 	"strings"
 	"time"
 )
@@ -15,11 +17,11 @@ var (
 )
 
 type BaseServer struct {
-	server       *http.Server
-	mux          *http.ServeMux
-	clients      chan GameClient
-	currentId    int
-	hasNewClient bool
+	server     *http.Server
+	mux        *http.ServeMux
+	newClients chan *i.GameClient
+	currentId  int
+	clients    []*i.GameClient
 }
 
 type LogFileHandler struct{}
@@ -45,9 +47,9 @@ func NewDefaultServer() *BaseServer {
 			WriteTimeout: 60 * time.Second,
 			ErrorLog:     Error,
 		},
-		mux:       mux,
-		clients:   make(chan GameClient, 2),
-		currentId: 1,
+		mux:        mux,
+		newClients: make(chan *i.GameClient),
+		currentId:  1,
 	}
 
 	server.mux.Handle("/", LogFileHandler{})
@@ -84,25 +86,25 @@ func (b *BaseServer) GetPort() (string, error) {
 	return split[1], nil
 }
 
-func (b *BaseServer) AwaitClient() GameClient {
-	return <-b.clients
+func (b *BaseServer) AwaitClient() *i.GameClient {
+	return <-b.newClients
 }
 
 func (b *BaseServer) Shutdown() {
-	for i := 0; i <= b.currentId; {
-		b.clients <- GameClient{}
+	for _, client := range b.clients {
+		client.Messages <- "done"
 	}
 	b.server.Shutdown(context.Background())
 }
 
 func (b *BaseServer) AddRequestListener(
 	path string,
-	fn func(w http.ResponseWriter, r *http.Request, client GameClient)) {
+	fn func(w http.ResponseWriter, r *http.Request, client *i.GameClient)) {
 
 	b.mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		Request.Printf("%s %s\n", r.Method, r.URL.String())
 
-		client := b.getClient(w, r)
+		client, _ := b.getClient(w, r)
 
 		fn(w, r, client)
 	})
@@ -118,38 +120,70 @@ func (b *BaseServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Request.Printf("%s %s\n", r.Method, r.URL.String())
-	client := b.getClient(w, r)
+	client, isNew := b.getClient(w, r)
 
 	// Find a way to manage concurrency
-	if b.hasNewClient {
-		b.hasNewClient = false
-		b.clients <- client
+	if isNew {
+		b.newClients <- client
+		b.clients = append(b.clients, client)
 	}
+
+	b.longPoll(w, client)
 }
 
 /* Gets the client id associated to the request,
 if None, gets a new one */
-func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) GameClient {
-	client := GameClient{}
+func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) (*i.GameClient, bool) {
+	reader := i.GameClient{}
 
-	err := json.NewDecoder(r.Body).Decode(&client)
-	if err != nil || client.Id == 0 {
+	err := json.NewDecoder(r.Body).Decode(&reader)
+	if err != nil || reader.Id == 0 {
+		Info.Println("ERROR OF DECODER")
 		// Shit went wrong, just create a new client
-		client.Id = b.newClient(w)
-		return client
+		client := i.GameClient{Messages: make(chan string), Writer: w}
+		go prot.NewClient(&client)
+		Info.Printf("New Client : %d\n", client.Id)
+
+		return &client, true
 	}
 
+	Info.Println("NO ERROR OF DECODER")
+	client := b.clients[reader.Id]
 	Info.Printf("Returning Existing Client : %+v\n", client)
-	prot.GetClientIdMessage(w, client.Id)
-	return client
+	go prot.ExistingClient(client)
+	return client, false
 }
 
-func (b *BaseServer) newClient(w http.ResponseWriter) int {
-	Info.Printf("New client; their ID is %d", b.currentId)
-	prot.GetClientIdMessage(w, b.currentId)
+func (b *BaseServer) longPoll(w http.ResponseWriter, client *i.GameClient) {
+	notifier, ok := w.(http.CloseNotifier)
+	if !ok {
+		panic("Expected http.ResponseWriter to be an http.CloseNotifier")
+	}
 
-	b.currentId += 1
-	b.hasNewClient = true
+	Info.Printf("Starting long poll for %d\n", client.Id)
+	_, cancel := context.WithCancel(context.Background())
 
-	return b.currentId - 1
+	for {
+		select {
+		case msg := <-client.Messages:
+			Info.Printf("Received message %s for client %d", msg, client.Id)
+
+			if msg == "done" {
+				cancel()
+				return
+			}
+
+			fmt.Fprint(w, msg)
+
+		case <-time.After(time.Minute * 10):
+			Info.Printf("Client %d will be disconnected\n", client.Id)
+			cancel()
+			return
+
+		case <-notifier.CloseNotify():
+			Info.Printf("Client %d has disconnected\n", client.Id)
+			cancel()
+			return
+		}
+	}
 }

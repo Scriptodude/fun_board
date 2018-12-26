@@ -2,17 +2,18 @@ package checker
 
 import (
 	"server/core"
+	i "server/interfaces"
 )
 
 var (
-	blackPlayer core.GameClient
-	whitePlayer core.GameClient
-	coreServer  core.Server
+	blackPlayer *i.GameClient
+	whitePlayer *i.GameClient
+	coreServer  i.Server
 )
 
 type CheckerServer struct{}
 
-func (CheckerServer) Init(server core.Server) {
+func (CheckerServer) Init(server i.Server) {
 	coreServer = server
 	core.Info.Println("The checker server was initialized.")
 

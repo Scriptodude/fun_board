@@ -1,11 +1,26 @@
 package protocols
 
 import "fmt"
-import "net/http"
+import i "server/interfaces"
 
-func GetClientIdMessage(w http.ResponseWriter, id int) {
-	str := fmt.Sprintf("{\"clientId\":%d}", id)
+var (
+	id int
+)
 
-	w.Header().Add("Content-Type", "application/json")
-	w.Write([]byte(str))
+func NewClient(client *i.GameClient) {
+	client.Id = id
+	id += 1
+
+	writeClientIdMessage(client)
+}
+
+func ExistingClient(client *i.GameClient) {
+	writeClientIdMessage(client)
+}
+
+func writeClientIdMessage(client *i.GameClient) {
+	str := fmt.Sprintf("{\"clientId\":%d}", client.Id)
+
+	client.Writer.Header().Add("Content-Type", "application/json")
+	client.Messages <- str
 }

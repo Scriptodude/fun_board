@@ -7,9 +7,9 @@ type Server interface {
 	ListenAndServe() error
 	GetAddress() (string, error)
 	GetPort() (string, error)
-	AwaitClient() GameClient
+	AwaitClient() *GameClient
 	Shutdown()
-	AddRequestListener(path string, fn func(w http.ResponseWriter, r *http.Request, client GameClient))
+	AddRequestListener(path string, fn func(w http.ResponseWriter, r *http.Request, client *GameClient))
 }
 
 /* Represents the resources of the game server which manages:
@@ -26,5 +26,7 @@ type GameServer interface {
 
 /* Represents a client that connected to the GameServer.*/
 type GameClient struct {
-	Id int `json:"clientId"`
+	Id       int                 `json:"clientId"`
+	Messages chan string         `json:"-"`
+	Writer   http.ResponseWriter `json:"-"`
 }
