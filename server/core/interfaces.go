@@ -4,7 +4,7 @@ import "net/http"
 
 /* Represent the basic server that manages clients and sockets and handlers */
 type Server interface {
-	ServeAndListen() error
+	ListenAndServe() error
 	GetAddress() (string, error)
 	GetPort() (string, error)
 	AwaitClient() GameClient
@@ -26,5 +26,5 @@ type GameServer interface {
 
 /* Represents a client that connected to the GameServer.*/
 type GameClient struct {
-	Id int
+	Id int `json:"clientId"`
 }

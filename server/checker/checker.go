@@ -16,11 +16,11 @@ func (CheckerServer) Init(server core.Server) {
 	coreServer = server
 	core.Info.Println("The checker server was initialized.")
 
-	err := server.ServeAndListen()
+	whitePlayer = server.AwaitClient()
+	blackPlayer = server.AwaitClient()
 
-	if err != nil {
-		core.Error.Println(err)
-	}
+	core.Info.Printf(`There are two players connected,
+	 				 starting the game with %+v and %+v`, whitePlayer, blackPlayer)
 }
 
 func (CheckerServer) Shutdown() {

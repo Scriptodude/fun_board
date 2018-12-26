@@ -2,10 +2,10 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	prot "server/core/protocols"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -15,10 +15,11 @@ var (
 )
 
 type BaseServer struct {
-	server    *http.Server
-	mux       *http.ServeMux
-	clients   chan GameClient
-	currentId int
+	server       *http.Server
+	mux          *http.ServeMux
+	clients      chan GameClient
+	currentId    int
+	hasNewClient bool
 }
 
 type LogFileHandler struct{}
@@ -46,7 +47,7 @@ func NewDefaultServer() *BaseServer {
 		},
 		mux:       mux,
 		clients:   make(chan GameClient, 2),
-		currentId: 0,
+		currentId: 1,
 	}
 
 	server.mux.Handle("/", LogFileHandler{})
@@ -56,7 +57,7 @@ func NewDefaultServer() *BaseServer {
 	return server
 }
 
-func (b *BaseServer) ServeAndListen() error {
+func (b *BaseServer) ListenAndServe() error {
 	return b.server.ListenAndServe()
 }
 
@@ -88,6 +89,9 @@ func (b *BaseServer) AwaitClient() GameClient {
 }
 
 func (b *BaseServer) Shutdown() {
+	for i := 0; i <= b.currentId; {
+		b.clients <- GameClient{}
+	}
 	b.server.Shutdown(context.Background())
 }
 
@@ -98,9 +102,9 @@ func (b *BaseServer) AddRequestListener(
 	b.mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		Request.Printf("%s %s\n", r.Method, r.URL.String())
 
-		id := b.getClientId(w, r)
+		client := b.getClient(w, r)
 
-		fn(w, r, GameClient{id})
+		fn(w, r, client)
 	})
 }
 
@@ -114,50 +118,38 @@ func (b *BaseServer) handleConnection(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Request.Printf("%s %s\n", r.Method, r.URL.String())
-	clientId := b.getClientId(w, r)
+	client := b.getClient(w, r)
 
-	client := GameClient{clientId}
-
-	// new client, not really hack proof tho...
-	if clientId >= b.currentId {
+	// Find a way to manage concurrency
+	if b.hasNewClient {
+		b.hasNewClient = false
 		b.clients <- client
 	}
 }
 
 /* Gets the client id associated to the request,
 if None, gets a new one */
-func (b *BaseServer) getClientId(w http.ResponseWriter, r *http.Request) int {
-	err := r.ParseForm()
+func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) GameClient {
+	client := GameClient{}
 
-	Info.Printf("Trying to get client id from %v\n", r.Form)
-
-	if err != nil {
-		Error.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	err := json.NewDecoder(r.Body).Decode(&client)
+	if err != nil || client.Id == 0 {
+		// Shit went wrong, just create a new client
+		client.Id = b.newClient(w)
+		return client
 	}
 
-	// For some reason, it might be a new client, assign a new Id
-	if r.Form.Get("clientId") == "" {
-		return b.newClient(w)
-	}
-
-	i, err := strconv.Atoi(r.Form.Get("clientId"))
-
-	if err != nil {
-		Error.Println(err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return -1
-	}
-
-	Info.Printf("The client already had the ID %d\n", i)
-	return i
+	Info.Printf("Returning Existing Client : %+v\n", client)
+	prot.GetClientIdMessage(w, client.Id)
+	return client
 }
 
 func (b *BaseServer) newClient(w http.ResponseWriter) int {
-	b.currentId += 1
-
 	Info.Printf("New client; their ID is %d", b.currentId)
-	w.Write(prot.GetClientIdMessage(b.currentId))
+	prot.GetClientIdMessage(w, b.currentId)
 
-	return b.currentId
+	b.currentId += 1
+	b.hasNewClient = true
+
+	return b.currentId - 1
 }

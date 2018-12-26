@@ -14,6 +14,14 @@ func main() {
 
 	core.InitLoggers()
 	base := core.NewDefaultServer()
+
+	go func() {
+		err := base.ListenAndServe()
+
+		if err != nil {
+			core.Error.Println(err)
+		}
+	}()
 	game := &checker.CheckerServer{}
 
 	go func() {
