@@ -32,4 +32,5 @@ func main() {
 	}()
 
 	game.Init(base)
+	game.Play()
 }

@@ -22,6 +22,7 @@ type BaseServer struct {
 	newClients chan *i.GameClient
 	currentId  int
 	clients    []*i.GameClient
+	ctx        context.Context
 }
 
 type LogFileHandler struct{}
@@ -92,9 +93,11 @@ func (b *BaseServer) AwaitClient() *i.GameClient {
 
 func (b *BaseServer) Shutdown() {
 	for _, client := range b.clients {
-		client.Messages <- "done"
+		Info.Printf("Closing client %d", client.Id)
+		close(client.Messages)
 	}
-	b.server.Shutdown(context.Background())
+	close(b.newClients)
+	b.server.Shutdown(b.ctx)
 }
 
 func (b *BaseServer) AddRequestListener(
@@ -138,7 +141,6 @@ func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) (*i.GameC
 
 	err := json.NewDecoder(r.Body).Decode(&reader)
 	if err != nil || reader.Id == 0 {
-		Info.Println("ERROR OF DECODER")
 		// Shit went wrong, just create a new client
 		client := i.GameClient{Messages: make(chan string), Writer: w}
 		go prot.NewClient(&client)
@@ -147,7 +149,6 @@ func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) (*i.GameC
 		return &client, true
 	}
 
-	Info.Println("NO ERROR OF DECODER")
 	client := b.clients[reader.Id]
 	Info.Printf("Returning Existing Client : %+v\n", client)
 	go prot.ExistingClient(client)
@@ -161,29 +162,28 @@ func (b *BaseServer) longPoll(w http.ResponseWriter, client *i.GameClient) {
 	}
 
 	Info.Printf("Starting long poll for %d\n", client.Id)
-	_, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	b.ctx = ctx
 
-	for {
-		select {
-		case msg := <-client.Messages:
-			Info.Printf("Received message %s for client %d", msg, client.Id)
+	select {
+	case msg := <-client.Messages:
+		Info.Printf("Received message %s for client %d", msg, client.Id)
 
-			if msg == "done" {
-				cancel()
-				return
-			}
-
-			fmt.Fprint(w, msg)
-
-		case <-time.After(time.Minute * 10):
-			Info.Printf("Client %d will be disconnected\n", client.Id)
-			cancel()
-			return
-
-		case <-notifier.CloseNotify():
-			Info.Printf("Client %d has disconnected\n", client.Id)
+		if msg == "done" {
 			cancel()
 			return
 		}
+
+		fmt.Fprint(w, msg)
+
+	case <-time.After(time.Minute * 10):
+		Info.Printf("Client %d will be disconnected\n", client.Id)
+		cancel()
+		return
+
+	case <-notifier.CloseNotify():
+		Info.Printf("Client %d has disconnected\n", client.Id)
+		cancel()
+		return
 	}
 }

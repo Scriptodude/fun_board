@@ -22,6 +22,7 @@ By default only / is handled by the server, which returns the static/game.html i
 type GameServer interface {
 	Init(server Server) // Inits the server's resources, if applicable.
 	Shutdown()
+	Play()
 }
 
 /* Represents a client that connected to the GameServer.*/

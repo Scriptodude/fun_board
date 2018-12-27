@@ -16,8 +16,10 @@ function getCookie(cname) {
 
 function setCookie(cname, cvalue) {
   var d = new Date();
-  d.setTime(d.getTime() + 10 * 1000);
+  d.setTime(d.getTime() + 1 * 60 * 1000);
   var expires = "expires="+ d.toUTCString();
+
+  console.log(expires)
   document.cookie = cname + "=" + cvalue + ";" + expires;
 }
 
