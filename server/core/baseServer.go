@@ -153,13 +153,13 @@ func (b *BaseServer) getClient(w http.ResponseWriter, r *http.Request) (*i.GameC
 		// Shit went wrong, just create a new client
 		client := i.GameClient{Messages: make(chan string), Writer: w}
 		go prot.NewClient(&client)
-		Info.Printf("New Client : %d\n", client.Id)
+		Info.Printf("New Client")
 
 		return &client, true
 	}
 
 	client := b.clients[reader.Id]
-	Info.Printf("Returning Existing Client : %+v\n", client)
+	Info.Printf("Returning Existing Client : %d\n", client.Id)
 	go prot.ExistingClient(client)
 	return client, false
 }
