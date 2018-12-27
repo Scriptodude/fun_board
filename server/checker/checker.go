@@ -34,7 +34,6 @@ func (CheckerServer) Init(server i.Server) {
 
 func (CheckerServer) Shutdown() {
 	core.Info.Println("Shutting down the checker server...")
-
 	// For now we shutdown the core server as well, eventually we might want
 	// to change the game type without restarting the server..
 	coreServer.Shutdown()
@@ -42,7 +41,12 @@ func (CheckerServer) Shutdown() {
 
 func (CheckerServer) Play() {
 	for {
-		_ = <-time.After(time.Second * 10)
+		select {
+		case <-time.After(time.Second * 10):
+		case <-coreServer.GetContext().Done():
+			core.Info.Println("Leaving the game")
+			return
+		}
 		core.Info.Printf("Playing, we have %d spectators", len(spectators))
 	}
 }

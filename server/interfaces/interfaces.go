@@ -1,6 +1,7 @@
 package core
 
 import "net/http"
+import "context"
 
 /* Represent the basic server that manages clients and sockets and handlers */
 type Server interface {
@@ -10,6 +11,7 @@ type Server interface {
 	AwaitClient() *GameClient
 	Shutdown()
 	AddRequestListener(path string, fn func(w http.ResponseWriter, r *http.Request, client *GameClient))
+	GetContext() context.Context
 }
 
 /* Represents the resources of the game server which manages:

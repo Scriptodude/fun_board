@@ -23,6 +23,7 @@ type BaseServer struct {
 	currentId  int
 	clients    []*i.GameClient
 	ctx        context.Context
+	cancel     context.CancelFunc
 }
 
 type LogFileHandler struct{}
@@ -56,12 +57,19 @@ func NewDefaultServer() *BaseServer {
 	server.mux.Handle("/", LogFileHandler{})
 	server.mux.HandleFunc("/connect", server.handleConnection)
 	server.server.RegisterOnShutdown(func() { Info.Println("Shutting down the server...") })
+	ctx, cancel := context.WithCancel(context.Background())
+	server.ctx = ctx
+	server.cancel = cancel
 
 	return server
 }
 
 func (b *BaseServer) ListenAndServe() error {
 	return b.server.ListenAndServe()
+}
+
+func (b *BaseServer) GetContext() context.Context {
+	return b.ctx
 }
 
 func (b *BaseServer) GetAddress() (string, error) {
@@ -97,6 +105,7 @@ func (b *BaseServer) Shutdown() {
 		close(client.Messages)
 	}
 	close(b.newClients)
+	b.cancel()
 	b.server.Shutdown(b.ctx)
 }
 
@@ -162,15 +171,13 @@ func (b *BaseServer) longPoll(w http.ResponseWriter, client *i.GameClient) {
 	}
 
 	Info.Printf("Starting long poll for %d\n", client.Id)
-	ctx, cancel := context.WithCancel(context.Background())
-	b.ctx = ctx
 
 	select {
 	case msg := <-client.Messages:
 		Info.Printf("Received message %s for client %d", msg, client.Id)
 
 		if msg == "done" {
-			cancel()
+			b.cancel()
 			return
 		}
 
@@ -178,12 +185,12 @@ func (b *BaseServer) longPoll(w http.ResponseWriter, client *i.GameClient) {
 
 	case <-time.After(time.Minute * 10):
 		Info.Printf("Client %d will be disconnected\n", client.Id)
-		cancel()
+		b.cancel()
 		return
 
 	case <-notifier.CloseNotify():
 		Info.Printf("Client %d has disconnected\n", client.Id)
-		cancel()
+		b.cancel()
 		return
 	}
 }
