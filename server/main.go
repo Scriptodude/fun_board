@@ -13,7 +13,8 @@ func main() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	core.InitLoggers()
-	base := core.NewDefaultServer()
+	//base := core.NewDefaultServer()
+	base := core.NewWebSocketServer("localhost", 8080)
 
 	go func() {
 		err := base.ListenAndServe()
