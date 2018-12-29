@@ -50,4 +50,14 @@ const f = async () => {
 	}
 }
 
-f()
+const webSocketInit = () => {
+	const ws = new WebSocket("ws://localhost:8080/connect", "game")
+
+	return ws
+}
+
+const socket = webSocketInit()
+
+socket.onmessage = (event) => {
+	console.log("Received message : ", event)
+}

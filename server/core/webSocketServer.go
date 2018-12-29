@@ -3,6 +3,8 @@ package core
 import (
 	"bufio"
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -10,6 +12,10 @@ import (
 	i "server/interfaces"
 	"strconv"
 	"strings"
+)
+
+const (
+	HANDSHAKE_CONCAT = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 )
 
 type WebSocketServer struct {
@@ -84,7 +90,12 @@ func (s *WebSocketServer) manageConnection(conn net.Conn) {
 		}
 
 		if request.Method == "GET" {
-			serveFile(request, conn)
+			if request.Header.Get("Sec-WebSocket-Protocol") == "game" {
+				handshake(conn, request)
+
+			} else {
+				serveFile(request, conn)
+			}
 		}
 	}
 	//}
@@ -156,9 +167,26 @@ func writeHttp(conn net.Conn, status int, header http.Header, body []byte) {
 	writer := bufio.NewWriter(conn)
 
 	writer.WriteString(statusLine)
+	writer.WriteByte('\n')
 	headers.Write(writer)
 	writer.WriteByte('\n')
 	writer.Write(body)
 
 	writer.Flush()
+}
+
+func handshake(conn net.Conn, req *http.Request) {
+	key := req.Header.Get("Sec-WebSocket-Key")
+	concat := key + HANDSHAKE_CONCAT
+	sha1 := sha1.Sum([]byte(concat))
+	str := base64.StdEncoding.EncodeToString(sha1[:])
+
+	headers := http.Header{}
+	headers.Set("Upgrade", "websocket")
+	headers.Set("Connection", "Upgrade")
+	headers.Set("Sec-WebSocket-Accept", str)
+	headers.Set("Sec-WebSocket-Extensions", "permessage-deflate")
+	headers.Set("Sec-WebSocket-Protocol", "game")
+	//req.Header.Set("Sec-WebSocket-Extensions", "server_max_window_bits=10")
+	writeHttp(conn, 101, headers, []byte(""))
 }
