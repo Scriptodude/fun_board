@@ -67,38 +67,32 @@ func (s *WebSocketServer) ListenAndServe() error {
 }
 
 func (s *WebSocketServer) manageConnection(conn net.Conn) {
-	//for {
-	select {
-	case <-s.ctx.Done():
-		conn.Close()
-		return
-	default:
+	isUpgraded := false
 
-		reader := bufio.NewReader(conn)
-		request, err := http.ReadRequest(reader)
-
-		if err != nil {
-			Error.Println(err)
+	for {
+		select {
+		case <-s.ctx.Done():
 			conn.Close()
-		}
+			return
+		default:
+			request, err := getRequest(conn)
 
-		request.ParseForm()
-		Request.Printf("Received Request %s %s with data %+v", request.Method, request.URL.String(), request.Form)
+			if err != nil {
+				Error.Println(err)
+				conn.Close()
+				return
+			}
 
-		if request.Form.Get("data") == "exit" {
-			conn.Close()
-		}
-
-		if request.Method == "GET" {
-			if request.Header.Get("Sec-WebSocket-Protocol") == "game" {
-				handshake(conn, request)
-
-			} else {
-				serveFile(request, conn)
+			if request.Method == "GET" {
+				if request.Header.Get("Sec-WebSocket-Protocol") == "game" || isUpgraded {
+					handshake(conn, request)
+					writeWebSocket(conn, "Hello World!")
+				} else {
+					serveFile(request, conn)
+				}
 			}
 		}
 	}
-	//}
 }
 
 func (s *WebSocketServer) GetAddress() (string, error) {
@@ -187,6 +181,31 @@ func handshake(conn net.Conn, req *http.Request) {
 	headers.Set("Sec-WebSocket-Accept", str)
 	headers.Set("Sec-WebSocket-Extensions", "permessage-deflate")
 	headers.Set("Sec-WebSocket-Protocol", "game")
-	//req.Header.Set("Sec-WebSocket-Extensions", "server_max_window_bits=10")
-	writeHttp(conn, 101, headers, []byte(""))
+	writeHttp(conn, 101, headers, []byte{})
+}
+
+func writeWebSocket(conn net.Conn, content string) {
+	val := append([]byte{'\u0001'}, []byte(content)...)
+
+	conn.Write(val)
+}
+
+func getRequest(conn net.Conn) (*http.Request, error) {
+	reader := bufio.NewReader(conn)
+	request, err := http.ReadRequest(reader)
+
+	if err != nil {
+		Error.Println(err)
+		return nil, err
+	}
+
+	err = request.ParseForm()
+
+	if err != nil {
+		Error.Println(err)
+		return nil, err
+	}
+
+	Request.Printf("Received Request %s %s with data %+v", request.Method, request.URL.String(), request.Form)
+	return request, nil
 }

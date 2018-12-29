@@ -59,5 +59,10 @@ const webSocketInit = () => {
 const socket = webSocketInit()
 
 socket.onmessage = (event) => {
-	console.log("Received message : ", event)
+	console.log(event.data)
 }
+
+socket.onopen = function (event) {
+	console.log("The socket is open !")
+  	socket.send("Here's some text that the server is urgently awaiting!"); 
+};
